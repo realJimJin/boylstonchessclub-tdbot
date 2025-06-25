@@ -235,6 +235,25 @@ func registerSlashCommands() {
 			},
 			{
 				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Name:        string(TdByeCmd),
+				Description: "Request a bye for a round",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionInteger,
+						Name:        "round",
+						Description: "Round number to skip",
+						Required:    true,
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionNumber,
+						Name:        "pts",
+						Description: "Points awarded (0, 0.5, 1; default 0.5)",
+						Required:    false,
+					},
+				},
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
 				Name:        string(TdStandingsCmd),
 				Description: "Get current standings for an event",
 				Options: []*discordgo.ApplicationCommandOption{

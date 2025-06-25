@@ -24,6 +24,7 @@ const (
 	TdEventCmd     TdSubCommand = "event"
 	TdPairingsCmd  TdSubCommand = "pairings"
 	TdStandingsCmd TdSubCommand = "standings"
+	TdByeCmd       TdSubCommand = "bye"
 )
 
 var tdSubCmdHdlrs = map[TdSubCommand]CmdHandler{
@@ -33,6 +34,7 @@ var tdSubCmdHdlrs = map[TdSubCommand]CmdHandler{
 	TdEventCmd:     tdEventCmdHandler,
 	TdPairingsCmd:  tdPairingsCmdHandler,
 	TdStandingsCmd: tdStandingsCmdHandler,
+	TdByeCmd:       tdByeCmdHandler,
 }
 
 func tdCmdHandler(inter *discordgo.Interaction) *discordgo.InteractionResponse {
@@ -77,6 +79,51 @@ func tdHelpCmdHandler(inter *discordgo.Interaction) *discordgo.InteractionRespon
 	}
 
 	resp.Data.Content = helpText
+	return resp
+}
+
+// tdByeCmdHandler handles /td bye requests
+func tdByeCmdHandler(inter *discordgo.Interaction) *discordgo.InteractionResponse {
+	resp := &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	}
+
+	data := inter.ApplicationCommandData()
+
+	var round int64 = -1
+	pts := 0.5
+
+	if len(data.Options) > 0 {
+		for _, opt := range data.Options[0].Options {
+			switch opt.Name {
+			case "round":
+				round = opt.IntValue()
+			case "pts":
+				// FloatValue only valid for Number type
+				pts = opt.FloatValue()
+			}
+		}
+	}
+
+	// Basic validation
+	if round < 1 {
+		resp.Data.Content = "❌ round must be ≥ 1"
+		return resp
+	}
+
+	validPts := map[float64]bool{0: true, 0.5: true, 1: true}
+	if !validPts[pts] {
+		resp.Data.Content = "❌ pts must be 0, 0.5, or 1"
+		return resp
+	}
+
+	// TODO: implement mapping of Discord user to Player and enforce additional
+	// validation rules (TD role, pairing status, bye limits, persistence).
+
+	resp.Data.Content = fmt.Sprintf("✅ Bye request recorded: round %d for %.1f point(s). (Note: This is a preview; final validation and storage forthcoming.)", round, pts)
 	return resp
 }
 
