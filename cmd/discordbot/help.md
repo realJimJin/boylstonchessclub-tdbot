@@ -23,4 +23,9 @@ Available Commands:
                          grouped by section. To share with the channel set
                          broadcast=true (false by default).
 
+  /td bye eventid=<eventId> round=<round> [pts=<0|0.5|1>]
+                         Request a bye for the specified round. Points
+                         default to 0.5 if omitted. Response is
+                         private to you.
+
 ```

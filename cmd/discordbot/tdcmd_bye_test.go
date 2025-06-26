@@ -7,7 +7,7 @@ import (
     "github.com/bwmarrin/discordgo"
 )
 
-func makeInteraction(round int64, pts *float64) *discordgo.Interaction {
+func makeInteraction(eventId int64, round int64, pts *float64) *discordgo.Interaction {
     opts := []*discordgo.ApplicationCommandInteractionDataOption{
         {
             Name: string(TdByeCmd),
@@ -17,6 +17,11 @@ func makeInteraction(round int64, pts *float64) *discordgo.Interaction {
 
     // Build the nested options slice for the sub-command
     subOpts := []*discordgo.ApplicationCommandInteractionDataOption{
+        {
+            Name:  "eventid",
+            Type:  discordgo.ApplicationCommandOptionInteger,
+            Value: float64(eventId),
+        },
         {
             Name:  "round",
             Type:  discordgo.ApplicationCommandOptionInteger,
@@ -38,6 +43,7 @@ func makeInteraction(round int64, pts *float64) *discordgo.Interaction {
     }
 
     return &discordgo.Interaction{
+        Member: &discordgo.Member{User: &discordgo.User{Username: "TestUser"}}, 
         Type: discordgo.InteractionApplicationCommand,
         Data: discordgo.InteractionData(val),
             
@@ -45,8 +51,13 @@ func makeInteraction(round int64, pts *float64) *discordgo.Interaction {
 }
 
 func TestTdByeCmdHandlerValidation(t *testing.T) {
+    // stub tournament fetcher
+    fetchTournament = func(id int64) (*Tournament, error) {
+        return &Tournament{Players: []Player{{DisplayName: "Test User", UscfID: 42}}}, nil
+    }
+
     // invalid round
-    inter := makeInteraction(0, nil)
+    inter := makeInteraction(1, 0, nil)
     resp := tdByeCmdHandler(inter)
     if resp.Data == nil || !strings.HasPrefix(resp.Data.Content, "❌") {
         t.Errorf("expected validation error for round < 1, got %+v", resp.Data)
@@ -54,7 +65,7 @@ func TestTdByeCmdHandlerValidation(t *testing.T) {
 
     // invalid pts
     badPts := 2.0
-    inter = makeInteraction(1, &badPts)
+    inter = makeInteraction(1, 1, &badPts) // eventId=1 round=1
     resp = tdByeCmdHandler(inter)
     if resp.Data == nil || !strings.HasPrefix(resp.Data.Content, "❌") {
         t.Errorf("expected validation error for bad pts, got %+v", resp.Data)
@@ -62,7 +73,7 @@ func TestTdByeCmdHandlerValidation(t *testing.T) {
 
     // valid
     goodPts := 0.5
-    inter = makeInteraction(3, &goodPts)
+    inter = makeInteraction(1, 3, &goodPts)
     resp = tdByeCmdHandler(inter)
     if resp.Data == nil || !strings.HasPrefix(resp.Data.Content, "✅") {
         t.Errorf("expected success message, got %+v", resp.Data)

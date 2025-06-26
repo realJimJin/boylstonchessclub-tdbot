@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -26,6 +26,62 @@ const (
 	TdStandingsCmd TdSubCommand = "standings"
 	TdByeCmd       TdSubCommand = "bye"
 )
+
+// fetchTournament abstracts tournament retrieval for ease of testing
+var fetchTournament = getBccTournament
+
+
+
+
+
+
+
+
+/*
+    sync.Mutex
+    data map[int64]map[int][]Bye // eventID -> uscfID -> byes
+}
+
+func (s *inMemoryByeStore) GetByes(eventId int64, uscfID int) []Bye {
+    s.Lock()
+    defer s.Unlock()
+    evtMap, ok := s.data[eventId]
+    if !ok {
+        return []Bye{}
+    }
+    return evtMap[uscfID]
+}
+
+func (s *inMemoryByeStore) AddBye(eventId int64, uscfID int, bye Bye) error {
+    s.Lock()
+    defer s.Unlock()
+    evtMap, ok := s.data[eventId]
+    if !ok {
+        evtMap = map[int][]Bye{}
+        s.data[eventId] = evtMap
+    }
+    playerByes := evtMap[uscfID]
+    // duplicate round?
+    for _, b := range byes {
+        if b.Round == bye.Round {
+            return fmt.Errorf("bye already recorded for round %d", bye.Round)
+        }
+    }
+    // half-point bye limit
+    halfCnt := 0
+    for _, b := range playerByes {
+        if b.Points == 0.5 {
+            halfCnt++
+        }
+    }
+    if bye.Points == 0.5 && halfCnt >= 3 {
+        return fmt.Errorf("maximum of three ½-point byes exceeded")
+    }
+    // persist (in-memory)
+    evtMap[uscfID] = append(playerByes, bye)
+    return nil
+}
+*/
 
 var tdSubCmdHdlrs = map[TdSubCommand]CmdHandler{
 	TdAboutCmd:     tdAboutCmdHandler,
@@ -93,12 +149,15 @@ func tdByeCmdHandler(inter *discordgo.Interaction) *discordgo.InteractionRespons
 
 	data := inter.ApplicationCommandData()
 
+	var eventId int64 = -1
 	var round int64 = -1
 	pts := 0.5
 
 	if len(data.Options) > 0 {
 		for _, opt := range data.Options[0].Options {
 			switch opt.Name {
+			case "eventid":
+				eventId = opt.IntValue()
 			case "round":
 				round = opt.IntValue()
 			case "pts":
@@ -109,6 +168,10 @@ func tdByeCmdHandler(inter *discordgo.Interaction) *discordgo.InteractionRespons
 	}
 
 	// Basic validation
+	if eventId < 1 {
+		resp.Data.Content = "❌ eventid must be ≥ 1"
+		return resp
+	}
 	if round < 1 {
 		resp.Data.Content = "❌ round must be ≥ 1"
 		return resp
@@ -120,10 +183,82 @@ func tdByeCmdHandler(inter *discordgo.Interaction) *discordgo.InteractionRespons
 		return resp
 	}
 
-	// TODO: implement mapping of Discord user to Player and enforce additional
-	// validation rules (TD role, pairing status, bye limits, persistence).
+	// Fetch tournament info and attempt to map Discord user -> tournament player
+	tourney, err := fetchTournament(eventId)
+	if err != nil {
+		resp.Data.Content = fmt.Sprintf("❌ unable to retrieve tournament data: %v", err)
+		return resp
+	}
 
-	resp.Data.Content = fmt.Sprintf("✅ Bye request recorded: round %d for %.1f point(s). (Note: This is a preview; final validation and storage forthcoming.)", round, pts)
+	dName := strings.ToLower(inter.Member.User.Username)
+	var matched *Player
+	for i := range tourney.Players {
+		if strings.Contains(strings.ToLower(strings.ReplaceAll(tourney.Players[i].DisplayName, " ", "")), dName) {
+			matched = &tourney.Players[i]
+			break
+		}
+	}
+
+	if matched == nil {
+		resp.Data.Content = "❌ could not match your Discord username to any player in the event—please ensure your Discord name resembles your USCF registration name"
+		return resp
+	}
+
+	// --- Bye eligibility checks ---
+	uid := matched.UscfID
+	if uid == 0 {
+		resp.Data.Content = "❌ cannot determine your USCF ID; bye request denied"
+		return resp
+	}
+
+	// determine last scheduled round from pairings
+	maxRound := 0
+	for _, p := range tourney.CurrentPairings {
+		if p.RoundNumber > maxRound {
+			maxRound = p.RoundNumber
+		}
+	}
+	if maxRound > 0 && int(round) == maxRound {
+		resp.Data.Content = "❌ last-round byes are not permitted"
+		return resp
+	}
+
+	// check if already paired this round
+	for _, p := range tourney.CurrentPairings {
+		if p.RoundNumber == int(round) {
+			if p.WhitePlayer.UscfID == uid || p.BlackPlayer.UscfID == uid {
+				resp.Data.Content = fmt.Sprintf("❌ you are already paired in round %d", round)
+				return resp
+			}
+		}
+	}
+
+	byes, err := byeStore.GetByes(eventId, uid)
+    if err != nil {
+        resp.Data.Content = fmt.Sprintf("❌ storage error: %v", err)
+        return resp
+    }
+    // duplicate round & half-point count check
+    halfCnt := 0
+    for _, b := range byes {
+        if b.Round == int(round) {
+            resp.Data.Content = fmt.Sprintf("❌ you already have a bye recorded for round %d", round)
+            return resp
+        }
+        if b.Points == 0.5 {
+            halfCnt++
+        }
+    }
+    if pts == 0.5 && halfCnt >= 3 {
+        resp.Data.Content = "❌ maximum of three ½-point byes exceeded"
+        return resp
+    }
+    if err := byeStore.AddBye(eventId, uid, Bye{Round: int(round), Points: pts}); err != nil {
+        resp.Data.Content = fmt.Sprintf("❌ unable to save bye: %v", err)
+        return resp
+    }
+
+	resp.Data.Content = fmt.Sprintf("✅ Bye recorded for %s: round %d, %.1f point(s)", matched.DisplayName, round, pts)
 	return resp
 }
 

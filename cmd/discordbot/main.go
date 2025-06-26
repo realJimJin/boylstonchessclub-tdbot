@@ -240,6 +240,12 @@ func registerSlashCommands() {
 				Options: []*discordgo.ApplicationCommandOption{
 					{
 						Type:        discordgo.ApplicationCommandOptionInteger,
+						Name:        "eventid",
+						Description: "Event id of the tournament (as returned by cal)",
+						Required:    true,
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionInteger,
 						Name:        "round",
 						Description: "Round number to skip",
 						Required:    true,
