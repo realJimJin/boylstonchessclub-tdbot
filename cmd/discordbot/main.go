@@ -30,7 +30,7 @@ var botPubKey ed25519.PublicKey
 //go:embed app.id
 var botAppId string
 
-const TdCmdId = "1382811720254230578"
+const TdCmdId = ""
 
 var client *discordgo.Session
 
@@ -47,6 +47,10 @@ var topLevelCmdHdlrs = map[TopLevelCommand]CmdHandler{
 	TdCmd: tdCmdHandler,
 }
 
+// logHeaders logs the headers of an HTTP request to the standard logger.
+//
+// The function prints each header name and value, indented by two spaces.
+// The output format is suitable for logging to the standard logger.
 func logHeaders(r *http.Request) {
 	for name, values := range r.Header {
 		for _, value := range values {
